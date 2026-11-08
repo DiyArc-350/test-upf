@@ -7,7 +7,10 @@ IFACE, ME_IP = "eth0", "10.0.3.50"
 BMV2_N3_MAC = "02:00:00:00:03:0a"
 UE_IP, DN_IP = "10.10.10.2", "10.0.6.2"
 
-sniffer = AsyncSniffer(iface=IFACE, filter=f"udp and dst host {ME_IP} and dst port 2152")
+sniffer = AsyncSniffer(
+    iface=IFACE,
+    lfilter=lambda p: p.haslayer(IP) and p.haslayer(UDP)
+    and p[IP].dst == ME_IP and p[UDP].dport == 2152)
 sniffer.start()
 time.sleep(1)
 
