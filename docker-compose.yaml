@@ -1,0 +1,313 @@
+name: p4upf
+
+x-nf: &nf
+  image: docker_open5gs
+  env_file: [.env]
+  deploy:
+    resources:
+      limits: { cpus: "0.3", memory: 96M }
+
+services:
+  # ---------------- 5G core (from herlesupreeth/docker_open5gs sa-deploy.yaml, UPF removed) ----------------
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    command: --bind_ip 0.0.0.0
+    env_file: [.env]
+    volumes:
+      - mongodbdata:/data/db
+      - mongodbdata:/data/configdb
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["27017/udp", "27017/tcp"]
+    networks:
+      default:
+        ipv4_address: ${MONGO_IP}
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  webui:
+    image: docker_open5gs
+    container_name: webui
+    depends_on: [mongo]
+    env_file: [.env]
+    environment:
+      - COMPONENT_NAME=webui
+      - DB_URI=mongodb://${MONGO_IP}/open5gs
+    volumes:
+      - ./webui:/mnt/webui
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["9999/tcp"]
+    ports: ["9999:9999/tcp"]
+    networks:
+      default:
+        ipv4_address: ${WEBUI_IP}
+    deploy:
+      resources:
+        limits: { cpus: "0.3", memory: 192M }
+
+  nrf:
+    <<: *nf
+    container_name: nrf
+    environment: [COMPONENT_NAME=nrf]
+    volumes:
+      - ./nrf:/mnt/nrf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${NRF_IP}
+
+  scp:
+    <<: *nf
+    container_name: scp
+    depends_on: [nrf]
+    environment: [COMPONENT_NAME=scp]
+    volumes:
+      - ./scp:/mnt/scp
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${SCP_IP}
+
+  ausf:
+    <<: *nf
+    container_name: ausf
+    depends_on: [nrf, scp]
+    environment: [COMPONENT_NAME=ausf]
+    volumes:
+      - ./ausf:/mnt/ausf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${AUSF_IP}
+
+  udr:
+    <<: *nf
+    container_name: udr
+    depends_on: [nrf, scp, mongo]
+    environment:
+      - COMPONENT_NAME=udr
+      - DB_URI=mongodb://${MONGO_IP}/open5gs
+    volumes:
+      - ./udr:/mnt/udr
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${UDR_IP}
+
+  udm:
+    <<: *nf
+    container_name: udm
+    depends_on: [nrf, scp]
+    environment: [COMPONENT_NAME=udm]
+    volumes:
+      - ./udm:/mnt/udm
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${UDM_IP}
+
+  smf:
+    <<: *nf
+    container_name: smf
+    depends_on: [nrf, scp, amf]
+    environment:
+      - COMPONENT_NAME=smf
+      - DEPLOY_MODE=5G
+    volumes:
+      - ./smf:/mnt/smf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["3868/tcp", "3868/sctp", "5868/tcp", "5868/sctp", "8805/udp", "2123/udp", "7777/tcp", "9091/tcp"]
+    networks:
+      default:
+        ipv4_address: ${SMF_IP}
+
+  amf:
+    <<: *nf
+    container_name: amf
+    depends_on: [nrf, scp, ausf, udm, udr, pcf, bsf]
+    environment: [COMPONENT_NAME=amf]
+    volumes:
+      - ./amf:/mnt/amf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["38412/sctp", "7777/tcp", "9091/tcp"]
+    networks:
+      default:
+        ipv4_address: ${AMF_IP}
+
+  pcf:
+    <<: *nf
+    container_name: pcf
+    depends_on: [nrf, scp, mongo]
+    environment:
+      - COMPONENT_NAME=pcf
+      - DB_URI=mongodb://${MONGO_IP}/open5gs
+    volumes:
+      - ./pcf:/mnt/pcf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp", "9091/tcp"]
+    networks:
+      default:
+        ipv4_address: ${PCF_IP}
+
+  bsf:
+    <<: *nf
+    container_name: bsf
+    depends_on: [nrf, scp, mongo]
+    environment:
+      - COMPONENT_NAME=bsf
+      - DB_URI=mongodb://${MONGO_IP}/open5gs
+    volumes:
+      - ./bsf:/mnt/bsf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${BSF_IP}
+
+  nssf:
+    <<: *nf
+    container_name: nssf
+    depends_on: [nrf, scp, mongo]
+    environment: [COMPONENT_NAME=nssf]
+    volumes:
+      - ./nssf:/mnt/nssf
+      - ./log:/open5gs/install/var/log/open5gs
+      - /etc/localtime:/etc/localtime:ro
+    expose: ["7777/tcp"]
+    networks:
+      default:
+        ipv4_address: ${NSSF_IP}
+
+  # ---------------- your data plane + controller (replaces UPF + ONOS) ----------------
+  bmv2:
+    image: p4lang/behavioral-model:latest
+    container_name: bmv2
+    entrypoint: ["bash", "/start_bmv2.sh"]
+    cap_add: [NET_ADMIN]
+    volumes:
+      - ./bmv2/start_bmv2.sh:/start_bmv2.sh:ro
+    networks:
+      default:
+        ipv4_address: 172.22.0.201
+      n3-net:
+        ipv4_address: 10.0.3.10
+        mac_address: "02:00:00:00:03:0a"
+      n6-net:
+        ipv4_address: 10.0.6.10
+        mac_address: "02:00:00:00:06:0a"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M }
+
+  controller:                 # SMF reaches it as UPF_IP (N4, UDP 8805)
+    build: ./controller
+    image: p4upf-controller
+    container_name: controller
+    depends_on: [bmv2]
+    environment:
+      BMV2_ADDR: bmv2:50001
+      PFCP_BIND: 0.0.0.0:8805
+      UP_N3_IP: 10.0.3.1
+      UP_N6_IP: 10.0.6.1
+      UE_POOL: 10.10.10.0/24
+    volumes:
+      - ./controller:/app
+      - ./p4/build:/p4:ro
+    networks:
+      default:
+        ipv4_address: ${UPF_IP}
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  dn:
+    build: ./dn
+    image: p4upf-dn
+    container_name: dn
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.tcp_ecn: 1
+    volumes:
+      - ./captures:/captures
+    networks:
+      n6-net:
+        ipv4_address: 10.0.6.2
+        mac_address: "02:00:00:00:06:02"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  # ---------------- UERANSIM (own configs, bypasses the repo's templating) ----------------
+  nr_gnb:
+    build: ./ueransim-p4
+    image: p4upf-ueransim
+    container_name: nr_gnb
+    depends_on: [amf, bmv2]
+    entrypoint: ["/bin/sh", "/config/gnb-entry.sh"]
+    cap_add: [NET_ADMIN]
+    volumes:
+      - ./ueransim-p4:/config:ro
+    networks:
+      default:
+        ipv4_address: 172.22.0.210
+      n3-net:
+        ipv4_address: 10.0.3.2
+        mac_address: "02:00:00:00:03:02"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  nr_ue:
+    build: ./ueransim-p4
+    image: p4upf-ueransim
+    container_name: nr_ue
+    depends_on: [nr_gnb]
+    entrypoint: ["/bin/sh", "/config/ue-entry.sh"]
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    sysctls:
+      net.ipv4.tcp_ecn: 1
+    volumes:
+      - ./ueransim-p4:/config:ro
+    networks:
+      default:
+        ipv4_address: 172.22.0.211
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+networks:
+  default:
+    name: docker_open5gs_default
+    ipam:
+      config:
+        - subnet: ${TEST_NETWORK}
+  n3-net:
+    name: n3-net
+    internal: true
+    ipam:
+      config: [{ subnet: 10.0.3.0/24, gateway: 10.0.3.254 }]
+  n6-net:
+    name: n6-net
+    internal: true
+    ipam:
+      config: [{ subnet: 10.0.6.0/24, gateway: 10.0.6.254 }]
+
+volumes:
+  mongodbdata:
+    name: docker_open5gs_mongodbdata
