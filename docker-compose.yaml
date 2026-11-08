@@ -195,7 +195,8 @@ services:
 
   # ---------------- your data plane + controller (replaces UPF + ONOS) ----------------
   bmv2:
-    image: p4lang/behavioral-model:latest
+    build: ./bmv2
+    image: p4upf-bmv2
     container_name: bmv2
     entrypoint: ["bash", "/start_bmv2.sh"]
     cap_add: [NET_ADMIN]
